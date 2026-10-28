@@ -1,0 +1,8 @@
+{
+  "name": "poro-digital-saas-v5",
+  "version": "5.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Static build ready'"
+  }
+}
