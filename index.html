@@ -826,6 +826,12 @@
         await checkAuthSession();
       }
       await loadCurrentRestaurant();
+
+      // Si l'utilisateur visite /admin ou index.html?view=dashboard
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('view') === 'dashboard' || window.location.pathname === '/admin') {
+        requestAccess('dashboard');
+      }
     })();
   </script>
 </body>
