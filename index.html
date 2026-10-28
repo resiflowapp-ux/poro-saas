@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Poro Digital • Commande en ligne Restaurant</title>
+
+  <meta name="description" content="Commandez vos plats directement sur WhatsApp avec Poro Digital.">
+  <meta property="og:type" content="website">
+
+  <!-- CONFIGURATION PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#ea580c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Poro Digital">
+  <link rel="apple-touch-icon" href="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=192">
+
+  <!-- Tailwind CSS, Supabase JS & QRCode Generator -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+
+      #printableQrCard,
+      #printableQrCard * {
+        visibility: visible;
+      }
+
+      #printableQrCard {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        display: flex !important;
+        justify-content: center;
+        align-items: center;
+        padding: 40px;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-gray-50 text-gray-900 pb-24 md:pb-8">
+
+  <div id="app" class="min-h-screen">
+    <!-- BANNIÈRE INSTALLATION PWA MOBILE -->
+    <div id="pwaInstallBanner"
+      class="bg-gray-900 text-white px-4 py-2.5 flex justify-between items-center text-xs shadow-md hidden no-print">
+      <div class="flex items-center gap-2">
+        <span class="text-base">📲</span>
+        <span><strong>Installez l'application</strong> pour un accès plus rapide !</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="triggerPwaInstall()"
+          class="bg-orange-600 hover:bg-orange-700 text-white font-bold px-3 py-1.5 rounded-lg">Installer</button>
+        <button onclick="dismissPwaBanner()" class="text-gray-400 hover:text-white px-1">✕</button>
+      </div>
+    </div>
+
+    <!-- EN-TÊTE -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-40 no-print">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+          <a href="landing.html"
+            class="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-sm hover:opacity-90">P</a>
+          <div>
+            <div class="font-bold text-base leading-tight" id="headerRestoName">Chargement...</div>
+            <div class="text-xs text-gray-500 flex items-center gap-1.5">
+              <span id="connectionBadge" class="w-2 h-2 rounded-full bg-yellow-400"></span>
+              <span id="connectionStatus">Connexion en cours...</span>
+            </div>
+          </div>
+        </div>
+
+        <nav class="flex items-center gap-1.5">
+          <button onclick="switchView('public')" id="btn-public"
+            class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 text-white transition">Menu
+            Client</button>
+          <button onclick="requestAccess('dashboard')" id="btn-dashboard"
+            class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition">Espace
+            Gérant</button>
+        </nav>
+      </div>
+    </header>
+
+    <!-- BANDEAU CONFIGURATION RAPIDE -->
+    <div id="supaConfigAlert" class="bg-amber-50 border-b border-amber-200 p-3 text-xs text-amber-900 hidden no-print">
+      <div class="max-w-6xl mx-auto flex flex-wrap gap-2 items-center justify-between">
+        <span>⚠️ <strong>Supabase non configuré :</strong> Saisissez vos clés :</span>
+        <div class="flex gap-2">
+          <input id="inputSupaUrl" placeholder="https://xxxx.supabase.co" class="border rounded px-2 py-1 text-xs w-48">
+          <input id="inputSupaKey" placeholder="anon-key" class="border rounded px-2 py-1 text-xs w-48">
+          <button onclick="saveSupabaseCredentials()"
+            class="bg-amber-800 text-white px-3 py-1 rounded font-bold">Activer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VUE 1 : MENU PUBLIC CLIENT -->
+    <main id="view-public" class="max-w-5xl mx-auto p-4 no-print">
+      <section
+        class="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between md:items-center gap-4">
+        <div>
+          <div
+            class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mb-2">
+            <span class="w-2 h-2 rounded-full bg-green-600 animate-pulse"></span> Ouvert aux commandes
+          </div>
+          <h1 class="text-2xl md:text-3xl font-extrabold text-gray-950" id="publicTitle">Chargement...</h1>
+          <p class="text-gray-600 text-sm mt-1" id="publicSubtitle">Livraison rapide ou commande sur place</p>
+        </div>
+        <div class="text-xs bg-orange-50 border border-orange-200 text-orange-900 rounded-xl p-3">
+          <strong>WhatsApp Direct :</strong> <span id="publicPhone">--</span><br>
+          <strong>Paiement accepté :</strong> Wave, OM, Moov, Espèces
+        </div>
+      </section>
+
+      <!-- Grille des Plats -->
+      <section>
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-bold text-gray-900">Carte & Menu du Jour</h2>
+          <span id="platsCountBadge" class="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full font-medium">0
+            plats</span>
+        </div>
+        <div id="public-menu" class="grid sm:grid-cols-2 md:grid-cols-3 gap-5">
+          <div class="text-sm text-gray-500 py-12 col-span-3 text-center">Chargement du menu...</div>
+        </div>
+      </section>
+
+      <!-- Panier Flottant Client -->
+      <aside id="public-cart"
+        class="fixed bottom-4 right-4 left-4 md:left-auto md:w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 p-5 hidden z-50">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="font-extrabold text-base">Votre Panier</h3>
+          <button onclick="clearCart()" class="text-xs text-red-600 hover:underline">Vider</button>
+        </div>
+
+        <div id="cart-items" class="max-h-48 overflow-y-auto divide-y divide-gray-100 mb-3"></div>
+
+        <!-- Coordonnées Client -->
+        <div class="space-y-2.5 pt-2 border-t border-gray-100 text-xs">
+          <div>
+            <label for="custName" class="font-semibold block text-gray-700 mb-1">Votre Nom & Prénom *</label>
+            <input id="custName" type="text" placeholder="Ex: Jean-Marc N'Guessan"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label for="custQuartier" class="font-semibold block text-gray-700 mb-1">Lieu de consommation *</label>
+            <select id="custQuartier" onchange="renderCart()"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
+              <option value="Sur Place" data-fee="0">🍽️ Sur place (À table)</option>
+              <option value="À emporter" data-fee="0">🛍️ À emporter (0 F)</option>
+              <option value="Zone Centrale" data-fee="1000">🛵 Livraison Centre / Proche (+1 000 F)</option>
+              <option value="Zone Éloignée" data-fee="1500">🛵 Livraison Quartier Périphérique (+1 500 F)</option>
+            </select>
+          </div>
+
+          <div id="tableNumberBox">
+            <label for="custTable" class="font-semibold block text-gray-700 mb-1">Numéro de Table (facultatif si
+              livraison)</label>
+            <input id="custTable" type="text" placeholder="Ex: Table 04"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          </div>
+
+          <div>
+            <label for="payMethod" class="font-semibold block text-gray-700 mb-1">Moyen de règlement</label>
+            <select id="payMethod" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="Wave">Wave</option>
+              <option value="Orange Money">Orange Money</option>
+              <option value="Moov Money">Moov Money</option>
+              <option value="Cash">Espèces</option>
+            </select>
+          </div>
+        </div>
+
+        <button onclick="sendOrder()"
+          class="w-full bg-green-600 hover:bg-green-700 text-white rounded-xl py-3.5 mt-4 font-bold text-sm shadow-md transition">
+          Envoyer la commande sur WhatsApp
+        </button>
+      </aside>
+    </main>
+
+    <!-- VUE 2 : DASHBOARD RESTAURANT (Privé) -->
+    <main id="view-dashboard" class="max-w-7xl mx-auto p-4 hidden no-print">
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <h1 class="text-2xl font-bold" id="dashRestoTitle">Gestion Restaurant</h1>
+          <p class="text-xs text-gray-500">Gérez vos plats et imprimez vos QR Codes de table.</p>
+        </div>
+        <button onclick="logout()"
+          class="text-xs bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium transition">
+          Se déconnecter
+        </button>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-6">
+        <!-- Colonne 1 & 2 : Ajout et gestion du menu -->
+        <div class="md:col-span-2 space-y-6">
+          <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h2 class="font-bold text-base mb-4">Ajouter un Plat au Menu</h2>
+            <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-4">
+              <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                <div class="md:col-span-4 flex gap-2">
+                  <label
+                    class="bg-gray-900 hover:bg-gray-800 text-white px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer text-center flex-1">
+                    📷 Photo
+                    <input type="file" accept="image/*" class="hidden" onchange="processFile(this.files[0])">
+                  </label>
+                </div>
+                <input id="platName" placeholder="Nom du plat"
+                  class="md:col-span-4 border rounded-lg px-3 py-2 text-sm">
+                <input id="platPrice" placeholder="Prix (FCFA)" type="number"
+                  class="md:col-span-2 border rounded-lg px-3 py-2 text-sm">
+                <button onclick="addPlatToSupabase()" id="btnAddPlat"
+                  class="md:col-span-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition">
+                  + Enregistrer
+                </button>
+              </div>
+
+              <div id="previewArea" class="mt-3 flex items-center gap-3 hidden">
+                <img id="previewImg" class="w-16 h-16 rounded-lg object-cover border" alt="Aperçu">
+                <span class="text-xs text-green-700 font-medium">✓ Photo prête</span>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto mt-4">
+              <table class="w-full text-sm text-left">
+                <thead>
+                  <tr class="text-gray-500 uppercase text-xs border-b">
+                    <th class="py-2">Plat</th>
+                    <th>Prix</th>
+                    <th>Stock</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="menuTable" class="divide-y divide-gray-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Colonne 3 : Chevalet QR Code -->
+        <div class="space-y-6">
+          <div class="bg-white rounded-xl p-5 shadow-sm border border-orange-100">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="text-xl">🖨️</span>
+              <h3 class="font-bold text-base text-gray-900">Chevalet QR Code Table</h3>
+            </div>
+            <p class="text-xs text-gray-500 mb-4">Générez et imprimez un QR code pour chaque table.</p>
+
+            <div class="space-y-3">
+              <div>
+                <label class="text-xs font-semibold text-gray-700 block mb-1">Numéro de table</label>
+                <input id="qrTableInput" type="text" value="01" oninput="generateTableQrCode()"
+                  class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-orange-600">
+              </div>
+
+              <div
+                class="bg-orange-50 border border-orange-200 rounded-xl p-4 flex flex-col items-center justify-center">
+                <div id="qrCodeContainer" class="bg-white p-3 rounded-lg shadow-sm"></div>
+                <div class="text-xs font-bold text-gray-800 mt-2 text-center" id="qrLabelPreview">Scannez pour commander
+                  • Table 01</div>
+                <div class="text-[10px] text-gray-500 mt-0.5 truncate max-w-full" id="qrUrlPreview"></div>
+              </div>
+
+              <button onclick="printQrCard()"
+                class="w-full bg-gray-900 hover:bg-black text-white font-bold py-2.5 rounded-lg text-sm transition">
+                Imprimer le chevalet
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- MODAL DE CONNEXION SÉCURISÉ SUPABASE AUTH -->
+    <div id="loginModal"
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden no-print">
+      <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl relative">
+        <button onclick="closeLoginModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700">✕</button>
+
+        <div class="text-center mb-5">
+          <div
+            class="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-xl font-bold mx-auto mb-2">
+            🔒</div>
+          <h3 class="font-bold text-lg text-gray-900">Espace Gérant</h3>
+          <p class="text-xs text-gray-500">Connectez-vous pour gérer votre carte et vos QR codes</p>
+        </div>
+
+        <form onsubmit="handleLogin(event)" class="space-y-3 text-xs">
+          <div>
+            <label class="font-bold text-gray-700 block mb-1">Numéro WhatsApp</label>
+            <input id="loginPhone" type="tel" required placeholder="Ex: 0749309717"
+              class="w-full border rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="font-bold text-gray-700 block mb-1">Mot de passe / Code secret</label>
+            <input id="loginPassword" type="password" required placeholder="Votre mot de passe"
+              class="w-full border rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
+          </div>
+          <button type="submit" id="btnLoginSubmit"
+            class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl text-sm transition mt-1">
+            Connexion au Dashboard
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- CHEVALET IMPRIMABLE -->
+    <div id="printableQrCard" class="hidden">
+      <div
+        style="border: 4px dashed #ea580c; border-radius: 24px; padding: 35px; width: 380px; text-align: center; background: white;">
+        <div style="font-size: 24px; font-weight: 900; color: #ea580c; margin-bottom: 4px;" id="printRestoName">Maquis
+          Le Poro</div>
+        <div style="font-size: 13px; color: #4b5563; margin-bottom: 20px;">Commandez directement depuis votre table !
+        </div>
+        <div id="printQrContainer" style="display: flex; justify-content: center; margin: 0 auto 15px auto;"></div>
+        <div style="font-size: 20px; font-weight: 800; color: #111827;" id="printTableNumber">TABLE 01</div>
+        <div style="font-size: 12px; color: #6b7280; margin-top: 10px;">Scannez avec votre appareil photo ou WhatsApp
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. SERVICE WORKER PWA
+    // ==========================================
+    let deferredPrompt = null;
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log(err));
+      });
+    }
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (!localStorage.getItem('poro_pwa_dismissed')) {
+        document.getElementById('pwaInstallBanner').classList.remove('hidden');
+      }
+    });
+    function triggerPwaInstall() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(() => {
+          deferredPrompt = null;
+          document.getElementById('pwaInstallBanner').classList.add('hidden');
+        });
+      }
+    }
+    function dismissPwaBanner() {
+      document.getElementById('pwaInstallBanner').classList.add('hidden');
+      localStorage.setItem('poro_pwa_dismissed', 'true');
+    }
+
+    // ==========================================
+    // 2. SUPABASE & AUTH SÉCURISÉE
+    // ==========================================
+    const DEFAULT_SUPABASE_URL = "https://tupeuvhunlyhujnfzfit.supabase.co";
+    const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_XkUoIi99hw6X769Gxfu--g_8qdcPGwW";
+
+    const SUPA_URL = localStorage.getItem('poro_supa_url') || DEFAULT_SUPABASE_URL;
+    const SUPA_KEY = localStorage.getItem('poro_supa_key') || DEFAULT_SUPABASE_ANON_KEY;
+
+    let supaClient = null;
+    let currentRestaurant = null;
+    let currentSlug = 'maquis-le-poro';
+    let currentUser = null;
+    let menu = [];
+    let cart = [];
+    let pendingImage = null;
+
+    function initSupabase() {
+      if (SUPA_URL.includes("VOTRE_PROJET") || !SUPA_KEY.length) {
+        document.getElementById('supaConfigAlert').classList.remove('hidden');
+        document.getElementById('connectionBadge').className = 'w-2 h-2 rounded-full bg-red-500';
+        document.getElementById('connectionStatus').innerText = 'Non connecté';
+        return false;
+      }
+      try {
+        supaClient = supabase.createClient(SUPA_URL, SUPA_KEY);
+        document.getElementById('connectionBadge').className = 'w-2 h-2 rounded-full bg-green-500';
+        document.getElementById('connectionStatus').innerText = 'Connecté (Supabase)';
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function saveSupabaseCredentials() {
+      const url = document.getElementById('inputSupaUrl').value.trim();
+      const key = document.getElementById('inputSupaKey').value.trim();
+      if (url && key) {
+        localStorage.setItem('poro_supa_url', url);
+        localStorage.setItem('poro_supa_key', key);
+        location.reload();
+      }
+    }
+
+    // Vérification de la session active Supabase
+    async function checkAuthSession() {
+      if (!supaClient) return;
+      const { data: { session } } = await supaClient.auth.getSession();
+      if (session && session.user) {
+        currentUser = session.user;
+        updateAuthUI(true);
+      } else {
+        currentUser = null;
+        updateAuthUI(false);
+      }
+    }
+
+    function updateAuthUI(isLoggedIn) {
+      const btnDash = document.getElementById('btn-dashboard');
+      if (isLoggedIn) {
+        btnDash.innerText = "Dashboard (Connecté)";
+        btnDash.classList.add('border-green-500', 'text-green-700');
+      } else {
+        btnDash.innerText = "Espace Gérant";
+        btnDash.classList.remove('border-green-500', 'text-green-700');
+      }
+    }
+
+    // ==========================================
+    // 3. GESTION DES ACCÈS & CONNEXION
+    // ==========================================
+    function requestAccess(view) {
+      if (currentUser) {
+        switchView(view);
+      } else {
+        openLoginModal();
+      }
+    }
+
+    function openLoginModal() {
+      document.getElementById('loginModal').classList.remove('hidden');
+    }
+
+    function closeLoginModal() {
+      document.getElementById('loginModal').classList.add('hidden');
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      let phone = document.getElementById('loginPhone').value.trim().replace(/\s+/g, '');
+      const password = document.getElementById('loginPassword').value;
+
+      if (phone.length === 10 && !phone.startsWith('225')) {
+        phone = '225' + phone;
+      }
+
+      const authEmail = `${phone}@poro.ci`;
+      const btn = document.getElementById('btnLoginSubmit');
+      btn.disabled = true;
+      btn.innerText = "Connexion en cours...";
+
+      if (!supaClient) {
+        alert("Supabase n'est pas configuré.");
+        btn.disabled = false;
+        return;
+      }
+
+      const { data, error } = await supaClient.auth.signInWithPassword({
+        email: authEmail,
+        password: password
+      });
+
+      btn.disabled = false;
+      btn.innerText = "Connexion au Dashboard";
+
+      if (error) {
+        alert("Erreur de connexion : " + error.message);
+      } else {
+        currentUser = data.user;
+        closeLoginModal();
+        updateAuthUI(true);
+        switchView('dashboard');
+      }
+    }
+
+    async function logout() {
+      if (supaClient) await supaClient.auth.signOut();
+      currentUser = null;
+      updateAuthUI(false);
+      switchView('public');
+    }
+
+    function switchView(view) {
+      ['public', 'dashboard'].forEach(v => {
+        document.getElementById(`view-${v}`).classList.add('hidden');
+        const btn = document.getElementById(`btn-${v}`);
+        if (btn) btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition';
+      });
+      document.getElementById(`view-${view}`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`btn-${view}`);
+      if (activeBtn) activeBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 text-white transition';
+    }
+
+    // ==========================================
+    // 4. CHARGEMENT RESTAURANT & MENU
+    // ==========================================
+    function getSlugFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const querySlug = params.get('r');
+      if (querySlug) return querySlug.toLowerCase();
+      const pathParts = window.location.pathname.split('/');
+      const rIndex = pathParts.indexOf('r');
+      if (rIndex !== -1 && pathParts[rIndex + 1]) return pathParts[rIndex + 1].toLowerCase();
+      return 'maquis-le-poro';
+    }
+
+    async function loadCurrentRestaurant() {
+      currentSlug = getSlugFromUrl();
+
+      if (!supaClient) {
+        currentRestaurant = {
+          id: 'demo-id',
+          name: currentSlug.replace('-', ' ').toUpperCase(),
+          slug: currentSlug,
+          whatsapp_phone: '2250749309717',
+          city: 'Bouaké'
+        };
+        applyRestaurantData(currentRestaurant);
+        return;
+      }
+
+      const { data: resto, error } = await supaClient
+        .from('restaurants')
+        .select('*')
+        .eq('slug', currentSlug)
+        .single();
+
+      if (error || !resto) {
+        document.getElementById('publicTitle').innerText = "Restaurant introuvable";
+        document.getElementById('publicSubtitle').innerText = `Aucun maquis trouvé avec le slug "${currentSlug}".`;
+        document.getElementById('public-menu').innerHTML = '<div class="col-span-3 text-center py-10 text-red-600">Vérifiez le lien URL.</div>';
+        return;
+      }
+
+      currentRestaurant = resto;
+      applyRestaurantData(resto);
+      await loadMenuForRestaurant(resto.id);
+    }
+
+    function applyRestaurantData(resto) {
+      document.getElementById('headerRestoName').innerText = resto.name;
+      document.getElementById('publicTitle').innerText = `${resto.name} • ${resto.city}`;
+      document.getElementById('publicPhone').innerText = resto.whatsapp_phone;
+      document.getElementById('dashRestoTitle').innerText = `Gestion • ${resto.name}`;
+      document.getElementById('printRestoName').innerText = resto.name;
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const tableParam = urlParams.get('table');
+      if (tableParam) {
+        document.getElementById('custTable').value = `Table ${tableParam}`;
+      }
+
+      generateTableQrCode();
+    }
+
+    async function loadMenuForRestaurant(restaurantId) {
+      if (!supaClient) return;
+
+      const { data: products } = await supaClient
+        .from('products')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('created_at', { ascending: false });
+
+      menu = products || [];
+      document.getElementById('platsCountBadge').innerText = `${menu.length} plats`;
+      renderPublic();
+      renderMenuTable();
+    }
+
+    // ==========================================
+    // 5. QR CODE & ACTIONS MENU
+    // ==========================================
+    function generateTableQrCode() {
+      const tableNum = document.getElementById('qrTableInput').value.trim() || '01';
+      const baseUrl = window.location.origin + window.location.pathname;
+      const targetUrl = `${baseUrl}?r=${currentSlug}&table=${encodeURIComponent(tableNum)}`;
+
+      document.getElementById('qrLabelPreview').innerText = `Scannez pour commander • Table ${tableNum}`;
+      document.getElementById('qrUrlPreview').innerText = targetUrl;
+      document.getElementById('printTableNumber').innerText = `TABLE ${tableNum.toUpperCase()}`;
+
+      const previewBox = document.getElementById('qrCodeContainer');
+      previewBox.innerHTML = '';
+      new QRCode(previewBox, { text: targetUrl, width: 140, height: 140, colorDark: "#000", colorLight: "#fff" });
+
+      const printBox = document.getElementById('printQrContainer');
+      printBox.innerHTML = '';
+      new QRCode(printBox, { text: targetUrl, width: 200, height: 200, colorDark: "#ea580c", colorLight: "#fff" });
+    }
+
+    function printQrCard() {
+      const card = document.getElementById('printableQrCard');
+      card.classList.remove('hidden');
+      window.print();
+      card.classList.add('hidden');
+    }
+
+    function renderPublic() {
+      const container = document.getElementById('public-menu');
+      if (menu.length === 0) {
+        container.innerHTML = '<div class="text-sm text-gray-500 py-10 col-span-3 text-center">Aucun plat disponible pour ce maquis.</div>';
+        return;
+      }
+
+      container.innerHTML = menu.map(p => `
+    <article class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex flex-col justify-between">
+      <div class="relative">
+        <img src="${p.image_url}" alt="${p.name}" loading="lazy" class="w-full h-44 object-cover">
+        ${!p.is_available ? '<span class="absolute top-2 right-2 bg-red-600 text-white text-xs px-2.5 py-0.5 rounded-full font-bold">Épuisé</span>' : ''}
+      </div>
+      <div class="p-4 flex-1 flex flex-col justify-between">
+        <div>
+          <span class="text-xs uppercase font-bold text-orange-600">${p.category || 'Plats'}</span>
+          <h3 class="font-bold text-gray-950 text-base leading-snug mt-0.5">${p.name}</h3>
+        </div>
+        <div class="flex justify-between items-center mt-4 pt-3 border-t border-gray-50">
+          <div class="font-black text-gray-900 text-lg">${p.price.toLocaleString()} F</div>
+          <button onclick="addToCart('${p.id}')" ${!p.is_available ? 'disabled class="bg-gray-300 cursor-not-allowed text-gray-600 px-3.5 py-2 rounded-xl text-xs font-bold"' : 'class="bg-orange-600 hover:bg-orange-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm"'}>
+            + Ajouter
+          </button>
+        </div>
+      </div>
+    </article>
+  `).join('');
+    }
+
+    function addToCart(id) {
+      const item = menu.find(m => m.id === id);
+      if (!item || !item.is_available) return;
+      const existing = cart.find(c => c.id === id);
+      if (existing) existing.qty++;
+      else cart.push({ ...item, qty: 1 });
+      renderCart();
+    }
+
+    function updateCartQty(id, delta) {
+      const item = cart.find(c => c.id === id);
+      if (!item) return;
+      item.qty += delta;
+      if (item.qty <= 0) cart = cart.filter(c => c.id !== id);
+      renderCart();
+    }
+
+    function clearCart() { cart = []; renderCart(); }
+
+    function renderCart() {
+      const el = document.getElementById('public-cart');
+      if (cart.length === 0) { el.classList.add('hidden'); return; }
+      el.classList.remove('hidden');
+
+      let subtotal = 0;
+      const itemsContainer = document.getElementById('cart-items');
+      itemsContainer.innerHTML = cart.map(c => {
+        subtotal += c.price * c.qty;
+        return `
+      <div class="py-2 flex justify-between items-center text-xs">
+        <div><div class="font-bold text-gray-900">${c.name}</div><div class="text-gray-500">${c.price} F × ${c.qty}</div></div>
+        <div class="flex items-center gap-2">
+          <button onclick="updateCartQty('${c.id}', -1)" class="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 font-bold">-</button>
+          <span class="font-semibold">${c.qty}</span>
+          <button onclick="updateCartQty('${c.id}', 1)" class="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 font-bold">+</button>
+        </div>
+      </div>
+    `;
+      }).join('');
+
+      const selectQuartier = document.getElementById('custQuartier');
+      const deliveryFee = parseInt(selectQuartier.selectedOptions[0]?.getAttribute('data-fee') || '0');
+      const grandTotal = subtotal + deliveryFee;
+
+      itemsContainer.innerHTML += `
+    <div class="pt-2 text-xs text-gray-600 flex justify-between"><span>Sous-total</span><span>${subtotal.toLocaleString()} F</span></div>
+    <div class="text-xs text-gray-600 flex justify-between"><span>Frais service / livraison</span><span>${deliveryFee.toLocaleString()} F</span></div>
+    <div class="pt-1 text-sm font-extrabold text-gray-950 flex justify-between border-t border-gray-100 mt-1">
+      <span>TOTAL</span><span class="text-orange-600">${grandTotal.toLocaleString()} FCFA</span>
+    </div>
+  `;
+    }
+
+    async function sendOrder() {
+      const name = document.getElementById('custName').value.trim();
+      if (!name) { alert("Veuillez saisir votre Nom."); return; }
+
+      const lieu = document.getElementById('custQuartier').value;
+      const table = document.getElementById('custTable').value.trim();
+      const deliveryFee = parseInt(document.getElementById('custQuartier').selectedOptions[0]?.getAttribute('data-fee') || '0');
+      const pay = document.getElementById('payMethod').value;
+      const phone = currentRestaurant ? currentRestaurant.whatsapp_phone : '2250749309717';
+
+      let subtotal = 0;
+      cart.forEach(c => subtotal += c.price * c.qty);
+      const total = subtotal + deliveryFee;
+
+      if (supaClient && currentRestaurant) {
+        await supaClient.from('orders').insert([{
+          restaurant_id: currentRestaurant.id,
+          customer_name: name,
+          delivery_area: table ? `${lieu} (${table})` : lieu,
+          delivery_fee: deliveryFee,
+          items: cart,
+          total_amount: total,
+          payment_method: pay,
+          status: 'pending'
+        }]);
+      }
+
+      let msg = `Bonjour *${currentRestaurant ? currentRestaurant.name : 'le restaurant'}* !\n🍗 *NOUVELLE COMMANDE*\n\n`;
+      msg += `👤 *Client :* ${name}\n`;
+      if (table) msg += `📍 *Emplacement :* ${table} (${lieu})\n`;
+      else msg += `📍 *Lieu :* ${lieu}\n`;
+      msg += `\n📋 *Détail :*\n`;
+      cart.forEach(c => msg += `• ${c.qty}x ${c.name} (${(c.price * c.qty).toLocaleString()} F)\n`);
+      if (deliveryFee > 0) msg += `\n🛵 *Livraison :* ${deliveryFee.toLocaleString()} FCFA\n`;
+      msg += `💰 *TOTAL : ${total.toLocaleString()} FCFA*\n💳 *Paiement :* ${pay}\n\nMerci !`;
+
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+
+    async function addPlatToSupabase() {
+      if (!currentRestaurant) return;
+      const name = document.getElementById('platName').value.trim();
+      const price = parseInt(document.getElementById('platPrice').value);
+      if (!name || isNaN(price)) { alert("Nom et prix valide requis"); return; }
+
+      await supaClient.from('products').insert([{
+        restaurant_id: currentRestaurant.id,
+        name: name,
+        category: 'Plats',
+        price: price,
+        is_available: true,
+        image_url: pendingImage || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'
+      }]);
+
+      document.getElementById('platName').value = '';
+      document.getElementById('platPrice').value = '';
+      pendingImage = null;
+      document.getElementById('previewArea').classList.add('hidden');
+      loadMenuForRestaurant(currentRestaurant.id);
+    }
+
+    function renderMenuTable() {
+      const container = document.getElementById('menuTable');
+      container.innerHTML = menu.map(p => `
+    <tr class="hover:bg-gray-50 transition">
+      <td class="py-2.5 flex items-center gap-3">
+        <img src="${p.image_url}" class="w-12 h-12 rounded-lg object-cover border" alt="${p.name}">
+        <div><div class="font-bold text-gray-900">${p.name}</div><div class="text-xs text-gray-500">${p.category}</div></div>
+      </td>
+      <td class="font-bold">${p.price.toLocaleString()} F</td>
+      <td>
+        <button onclick="toggleProductAvailability('${p.id}', ${p.is_available})" class="px-2 py-1 rounded text-xs font-semibold ${p.is_available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+          ${p.is_available ? 'En stock' : 'Épuisé'}
+        </button>
+      </td>
+      <td class="text-right">
+        <button onclick="deleteProduct('${p.id}')" class="text-red-600 hover:text-red-800 text-xs font-medium border border-red-200 px-2 py-1 rounded">Supprimer</button>
+      </td>
+    </tr>
+  `).join('');
+    }
+
+    async function toggleProductAvailability(id, currentStatus) {
+      await supaClient.from('products').update({ is_available: !currentStatus }).eq('id', id);
+      loadMenuForRestaurant(currentRestaurant.id);
+    }
+
+    async function deleteProduct(id) {
+      if (confirm("Supprimer ce plat ?")) {
+        await supaClient.from('products').delete().eq('id', id);
+        loadMenuForRestaurant(currentRestaurant.id);
+      }
+    }
+
+    function processFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 600;
+          let width = img.width, height = img.height;
+          if (width > height && width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          } else if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          pendingImage = canvas.toDataURL('image/jpeg', 0.70);
+          document.getElementById('previewImg').src = pendingImage;
+          document.getElementById('previewArea').classList.remove('hidden');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Initialisation globale
+    (async function init() {
+      if (initSupabase()) {
+        await checkAuthSession();
+      }
+      await loadCurrentRestaurant();
+    })();
+  </script>
+</body>
+
+</html>

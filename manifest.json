@@ -1,0 +1,24 @@
+{
+    "name": "Poro Digital • Commande Restaurant",
+    "short_name": "Poro Digital",
+    "description": "Commandez au maquis et restaurant en direct sur WhatsApp avec paiement Mobile Money.",
+    "start_url": "./",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#ea580c",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=192",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=512",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}

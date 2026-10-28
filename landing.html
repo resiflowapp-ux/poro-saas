@@ -1,0 +1,149 @@
+<!-- MODAL ONBOARDING / INSCRIPTION SÉCURISÉE -->
+<div id="onboardingModal"
+    class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative">
+        <button onclick="closeModal()"
+            class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-lg">✕</button>
+
+        <div class="text-center mb-6">
+            <div
+                class="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-2xl font-bold mx-auto mb-3">
+                🍽️
+            </div>
+            <h3 class="text-xl font-bold text-gray-950" id="modalTitle">Créer mon Restaurant</h3>
+            <p class="text-xs text-gray-500 mt-1" id="modalSubtitle">Inscription en 2 minutes • Essai 7 jours gratuit
+            </p>
+        </div>
+
+        <form id="onboardingForm" onsubmit="handleOnboardingSubmit(event)" class="space-y-3.5 text-xs">
+            <div>
+                <label class="font-bold text-gray-700 block mb-1">Nom de votre Maquis ou Restaurant *</label>
+                <input id="restoNameInput" required placeholder="Ex: Chez Tantie Alice"
+                    class="w-full border rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="font-bold text-gray-700 block mb-1">Ville *</label>
+                    <input id="restoCityInput" required placeholder="Ex: Bouaké"
+                        class="w-full border rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="font-bold text-gray-700 block mb-1">Quartier *</label>
+                    <input id="restoQuarterInput" required placeholder="Ex: Nimbo"
+                        class="w-full border rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div>
+                <label class="font-bold text-gray-700 block mb-1">Numéro WhatsApp (Réception des commandes) *</label>
+                <input id="restoPhoneInput" type="tel" required placeholder="Ex: 07 49 30 97 17"
+                    class="w-full border rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
+            </div>
+
+            <div class="bg-orange-50/70 p-3 rounded-xl border border-orange-200">
+                <label class="font-bold text-gray-900 block mb-1">🔒 Votre Code Secret / Mot de passe de gestion
+                    *</label>
+                <input id="restoPasswordInput" type="password" required minlength="6"
+                    placeholder="Au moins 6 caractères ou chiffres"
+                    class="w-full border rounded-xl px-3.5 py-2 text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none">
+                <span class="text-[10px] text-gray-500 mt-1 block">Ce code servira à vous connecter à votre espace
+                    gérant.</span>
+            </div>
+
+            <button type="submit" id="btnSubmitOnboard"
+                class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-orange-600/30 transition mt-2">
+                Créer mon compte et mon menu →
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const SUPA_URL = localStorage.getItem('poro_supa_url') || "https://VOTRE_PROJET.supabase.co";
+    const SUPA_KEY = localStorage.getItem('poro_supa_key') || "VOTRE_CLE_ANON_ICI";
+
+    let supaClient = null;
+    try {
+        if (!SUPA_URL.includes("VOTRE_PROJET")) {
+            supaClient = supabase.createClient(SUPA_URL, SUPA_KEY);
+        }
+    } catch (e) { }
+
+    function openModal(formula) {
+        document.getElementById('onboardingModal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+        document.getElementById('onboardingModal').classList.add('hidden');
+    }
+
+    async function handleOnboardingSubmit(e) {
+        e.preventDefault();
+
+        const name = document.getElementById('restoNameInput').value.trim();
+        const city = document.getElementById('restoCityInput').value.trim();
+        const quarter = document.getElementById('restoQuarterInput').value.trim();
+        let phone = document.getElementById('restoPhoneInput').value.trim().replace(/\s+/g, '');
+        const password = document.getElementById('restoPasswordInput').value;
+
+        if (phone.length === 10 && !phone.startsWith('225')) {
+            phone = '225' + phone;
+        }
+
+        const slug = name.toLowerCase()
+            .replace(/[^\w\s-]/g, '')
+            .trim()
+            .replace(/\s+/g, '-');
+
+        const btn = document.getElementById('btnSubmitOnboard');
+        btn.disabled = true;
+        btn.innerText = "Création du compte sécurisé...";
+
+        if (!supaClient) {
+            alert("Supabase non connecté. Veuillez renseigner l'URL et la clé.");
+            btn.disabled = false;
+            return;
+        }
+
+        // 1. Inscription dans Supabase Auth (Email technique basé sur le téléphone)
+        const authEmail = `${phone}@poro.ci`;
+        const { data: authData, error: authError } = await supaClient.auth.signUp({
+            email: authEmail,
+            password: password,
+            options: {
+                data: { restaurant_name: name, phone: phone }
+            }
+        });
+
+        if (authError) {
+            alert("Erreur lors de la création du compte : " + authError.message);
+            btn.disabled = false;
+            btn.innerText = "Créer mon compte et mon menu →";
+            return;
+        }
+
+        const userId = authData.user ? authData.user.id : null;
+
+        // 2. Insertion du restaurant lié à l'owner_id
+        const { error: restoError } = await supaClient.from('restaurants').insert([{
+            name: name,
+            slug: slug,
+            whatsapp_phone: phone,
+            city: `${city} (${quarter})`,
+            owner_id: userId,
+            subscription_status: 'trial',
+            subscription_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        }]);
+
+        if (restoError) {
+            alert("Erreur création restaurant : " + restoError.message);
+            btn.disabled = false;
+            return;
+        }
+
+        // 3. Redirection automatique vers le menu avec session active
+        alert(`Bienvenue ${name} ! Votre compte est créé. Redirection vers votre menu...`);
+        window.location.href = `index.html?r=${slug}`;
+    }
+</script>
